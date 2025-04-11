@@ -1,6 +1,6 @@
-# DOM Capture Extension
+# DAP Capture Extension
 
-A lightweight, scalable, and modular Chrome extension for capturing and managing DOM element and page metadata during user journeys across web applications.
+A Chrome extension for capturing web elements and their interactions in a structured flow.
 
 ## Purpose
 
@@ -11,33 +11,53 @@ This extension helps create structured JSON data dumps that log page-level and e
 - Support cross-page journey flows with tracking of element-to-element transitions
 - Export/download structured JSON dumps
 
-## Features
+## Installation and Setup
 
-- **Capture Mode**: Click on DOM elements to capture their metadata
-- **Page Tracking**: Automatically captures page metadata when visiting new pages
-- **Journey Tracking**: Maintains context across page navigation
-- **Structured Data**: Enforces a standardized JSON schema for captured data
-- **Export**: Generate and download JSON exports of all captured data
-
-## Installation
-
-### Development Installation
-
-1. Clone or download this repository
+1. Clone this repository to your local machine
 2. Open Chrome and navigate to `chrome://extensions/`
-3. Enable "Developer mode" in the top-right corner
-4. Click "Load unpacked" and select the `capture_extension` folder
-5. The extension should now be installed and ready to use
+3. Enable "Developer mode" in the top right corner
+4. Click "Load unpacked" and select the extension directory
 
-## Usage
+## Usage Instructions
 
-1. Click the extension icon in your browser toolbar to open the popup
-2. Toggle "Capture Mode" to begin capturing DOM elements
-3. Navigate to the web pages you want to capture
-4. Click on elements to capture their metadata
-   - You'll be prompted to provide a description and optional KPI
-5. Continue your journey across multiple pages as needed
-6. When finished, click "Export Captured Data" to download the structured JSON
+### Starting a New Capture Session
+
+1. **Add Extension to Chrome**
+   - Follow the installation steps above
+   - Pin the extension to your toolbar for easy access
+
+2. **Begin Capture**
+   - Click the extension icon in your toolbar
+   - Toggle "Capture Mode" to start capturing elements
+
+3. **Element Selection Process**
+   - Click on the desired element on the webpage
+   - A popup will appear requesting information
+   - Provide a clear description (mandatory)
+   - Add KPI metrics if applicable (optional)
+   - Click "Confirm" to add to capture
+
+4. **Continuing the Flow**
+   - Repeat the selection process for each element
+   - Maintain the exact sequence of your intended flow
+   - For elements leading to page navigation, check "Mark as navigation trigger"
+
+5. **Multiple Page Flows**
+   - After completing elements on one page, select the last element
+   - Check "Mark as navigation trigger" in its popup
+   - Navigate to the next page and continue capturing
+
+6. **Exporting Data**
+   - Click the extension icon
+   - Select "Export Captured Data" to save your flow
+
+7. **Starting a New Flow**
+   - Go to `chrome://extensions/`
+   - Refresh the extension
+   - Refresh your target webpage
+   - Begin new capture session
+
+> Note: Currently, the "Reset all Data" function may be unstable. Instead, refresh the extension and webpage to start a new session.
 
 ## JSON Schema
 
@@ -51,8 +71,7 @@ This extension helps create structured JSON data dumps that log page-level and e
   "ui_version": "1.0",
   "description": "Dashboard main landing page",
   "KPI": "xyz",
-  "updated_at": "2025-04-10T10:00:00Z",
-  "from": null
+  "updated_at": "2025-04-10T10:00:00Z"
 }
 ```
 
@@ -92,15 +111,60 @@ This extension helps create structured JSON data dumps that log page-level and e
 }
 ```
 
-## Architecture
+## System Architecture
 
-The extension is built with a modular architecture:
+### Components
 
-1. **UI Handling Module**: Extension popup, toggles, and input fields
-2. **DOM Capture Module**: Element selection logic, hover/click events, popup prompts
-3. **Storage Management Module**: Handle all temporary storage in browser local storage
-4. **Export Module**: Compile and export JSON dump based on schemas
-5. **Cross-Page Flow Management**: Maintain journey context across page navigations
+* **Background Service Worker**
+  - Manages extension lifecycle
+  - Handles communication between components
+  - Maintains capture session state
+
+* **Content Script**
+  - Injects capture functionality into webpages
+  - Handles element selection and highlighting
+  - Manages popup interactions
+
+* **Popup Interface**
+  - Provides user controls for capture mode
+  - Displays capture status
+  - Offers export and reset functionality
+
+* **Storage System**
+  - Chrome storage API integration
+  - Maintains captured element data
+  - Preserves flow sequence information
+
+### Data Structure
+
+* **Element Capture Format**
+  - Element description
+  - XPath/selector information
+  - Navigation flags
+  - Associated KPIs
+  - Sequence information
+
+* **Flow Organization**
+  - Sequential storage of elements
+  - Page transition markers
+  - Navigation triggers
+
+### Features
+
+* **Element Selection**
+  - Visual highlighting
+  - Accurate DOM element identification
+  - Popup for data entry
+
+* **Flow Management**
+  - Sequence preservation
+  - Multi-page support
+  - Navigation handling
+
+* **Data Export**
+  - Structured JSON output
+  - Complete flow documentation
+  - Reusable capture format
 
 ## Future Enhancements
 
@@ -110,4 +174,4 @@ The extension is built with a modular architecture:
 
 ## License
 
-MIT 
+MIT
