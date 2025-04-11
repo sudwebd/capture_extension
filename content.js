@@ -418,7 +418,6 @@ async function capturePage() {
             description: document.title || "Untitled Page",
             KPI: null,
             updated_at: new Date().toISOString(),
-            from: null
         };
 
         // Update storage

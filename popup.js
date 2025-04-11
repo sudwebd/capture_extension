@@ -1,5 +1,8 @@
 // UI Handling Module for DOM Capture Extension
 document.addEventListener('DOMContentLoaded', async () => {
+    // Import the ID registry manager
+    const idRegistryManager = await import(chrome.runtime.getURL("src/modules/id-registry-manager.js"));
+
     // Get UI elements
     const captureToggle = document.getElementById('capture-toggle');
     const exportBtn = document.getElementById('export-btn');
@@ -7,6 +10,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const elementsCount = document.getElementById('elements-count');
     const pagesCount = document.getElementById('pages-count');
     const navigationStatus = document.getElementById('navigation-status');
+    const platformSelect = document.getElementById('platform-select');
+    const addPlatformBtn = document.getElementById('add-platform-btn');
 
     // Initialize UI state from storage
     const {
@@ -20,6 +25,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         'pageData',
         'pendingNavigation'
     ]);
+
+    // Initialize platform selector
+    await initializePlatformSelector();
 
     captureToggle.checked = captureMode;
     updateCounts(elementData, pageData);
@@ -37,6 +45,41 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else {
         showNavigationStatus(false);
     }
+
+    // Platform selector functionality
+    platformSelect.addEventListener('change', async () => {
+        const platformKey = platformSelect.value;
+        await idRegistryManager.setPlatformKey(platformKey);
+        chrome.runtime.sendMessage({
+            action: 'setPlatformKey',
+            platformKey: platformKey
+        });
+        showStatus(`Platform switched to: ${platformKey}`);
+    });
+
+    // Add new platform button
+    addPlatformBtn.addEventListener('click', async () => {
+        const platformKey = prompt('Enter a new platform name:');
+        if (platformKey && platformKey.trim() !== '') {
+            // Add to dropdown
+            const option = document.createElement('option');
+            option.value = platformKey.trim();
+            option.textContent = platformKey.trim();
+            platformSelect.appendChild(option);
+
+            // Select the new platform
+            platformSelect.value = platformKey.trim();
+
+            // Set as current platform
+            await idRegistryManager.setPlatformKey(platformKey.trim());
+            chrome.runtime.sendMessage({
+                action: 'setPlatformKey',
+                platformKey: platformKey.trim()
+            });
+
+            showStatus(`New platform added: ${platformKey.trim()}`);
+        }
+    });
 
     // Toggle capture mode
     captureToggle.addEventListener('change', async () => {
@@ -59,10 +102,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Export captured data
     exportBtn.addEventListener('click', async () => {
-        const { elementData = [], pageData = [], idRegistry = null } = await chrome.storage.local.get([
+        const { elementData = [], pageData = [] } = await chrome.storage.local.get([
             'elementData',
-            'pageData',
-            'idRegistry'
+            'pageData'
         ]);
 
         if (elementData.length === 0 && pageData.length === 0) {
@@ -70,11 +112,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
+        // Get the current platform's ID registry
+        const currentPlatformKey = await idRegistryManager.getPlatformKey();
+        const allRegistries = await idRegistryManager.exportAllIdRegistries();
+
         // Prepare data for export
         const exportData = {
             pages: pageData,
             elements: elementData,
-            idRegistry: idRegistry,
+            platform: currentPlatformKey,
+            registries: allRegistries,
             exportedAt: new Date().toISOString()
         };
 
@@ -83,7 +130,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `dom-capture-export-${new Date().toISOString().substring(0, 10)}.json`;
+        a.download = `dom-capture-export-${currentPlatformKey}-${new Date().toISOString().substring(0, 10)}.json`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -95,6 +142,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Reset all captured data
     resetBtn.addEventListener('click', async () => {
         if (confirm('Are you sure you want to reset all captured data?')) {
+            // Reset the ID registry for the current platform
+            await idRegistryManager.resetIdRegistry();
+
             await chrome.storage.local.set({
                 elementData: [],
                 pageData: [],
@@ -106,6 +156,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             exportBtn.disabled = true;
             showNavigationStatus(false);
             showStatus('All data has been reset');
+
+            // Notify background script that data was reset
+            chrome.runtime.sendMessage({ action: 'dataReset' });
         }
     });
 
@@ -130,6 +183,32 @@ document.addEventListener('DOMContentLoaded', async () => {
             showNavigationStatus(changes.pendingNavigation.newValue);
         }
     });
+
+    // Helper function to initialize platform selector
+    async function initializePlatformSelector() {
+        // Get all registries to see what platforms we have
+        const allRegistries = await idRegistryManager.exportAllIdRegistries();
+        const currentPlatform = await idRegistryManager.getPlatformKey();
+
+        // Clear dropdown except for default
+        while (platformSelect.options.length > 1) {
+            platformSelect.remove(1);
+        }
+
+        // Add all platforms from registries
+        const platforms = Object.keys(allRegistries || {});
+        platforms.forEach(platform => {
+            if (platform !== 'default' && !Array.from(platformSelect.options).some(opt => opt.value === platform)) {
+                const option = document.createElement('option');
+                option.value = platform;
+                option.textContent = platform;
+                platformSelect.appendChild(option);
+            }
+        });
+
+        // Set current platform
+        platformSelect.value = currentPlatform || 'default';
+    }
 
     // Helper function to update counts in UI
     function updateCounts(elements, pages) {

@@ -141,6 +141,25 @@
         .badge.navigation {
             background-color: #ff9800;
         }
+
+        .platform-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+
+        .platform-label {
+            font-size: 14px;
+        }
+
+        .platform-select {
+            flex: 1;
+            margin-left: 10px;
+            padding: 5px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
     </style>
 </head>
 
@@ -153,6 +172,14 @@
     <div class="navigation-status" id="navigation-status">
         <strong>Navigation in progress</strong>
         <p>Capture mode will automatically resume on the next page.</p>
+    </div>
+
+    <div class="platform-container">
+        <span class="platform-label">Platform:</span>
+        <select id="platform-select" class="platform-select">
+            <option value="default">Default</option>
+        </select>
+        <button id="add-platform-btn" class="button" style="padding: 5px; margin-left: 5px;">+</button>
     </div>
 
     <div class="controls">

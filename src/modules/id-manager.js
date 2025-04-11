@@ -3,6 +3,9 @@
  * Ensures unique IDs for pages and elements across multiple capture sessions
  */
 
+// Import the ID Registry Manager
+import * as idRegistryManager from './id-registry-manager.js';
+
 // Constants for ID prefixes
 const PAGE_PREFIX = 'page_';
 const ELEMENT_PREFIX = 'elem_';
@@ -12,25 +15,9 @@ const ELEMENT_PREFIX = 'elem_';
  * @returns {Promise<void>}
  */
 export async function initializeIdManager() {
-    // Check if we have an existing ID registry
-    const { idRegistry } = await chrome.storage.local.get(['idRegistry']);
-
-    if (!idRegistry) {
-        // If no registry exists, create a new one
-        await chrome.storage.local.set({
-            idRegistry: {
-                pages: {}, // Maps URL patterns to their assigned IDs
-                elements: {}, // Maps selector+context to their assigned IDs
-                counters: {
-                    page: 1000, // Start with a high number to avoid conflicts with manually assigned IDs
-                    element: 1000
-                }
-            }
-        });
-        console.log('ID registry created successfully');
-    } else {
-        console.log('ID registry loaded successfully');
-    }
+    // Get the current registry for this platform
+    const registry = await idRegistryManager.getIdRegistry();
+    console.log('ID registry loaded successfully');
 }
 
 /**
@@ -40,7 +27,8 @@ export async function initializeIdManager() {
  * @returns {Promise<string>} Unique page ID
  */
 export async function generateUniquePageId(urlPattern, title) {
-    const { idRegistry } = await chrome.storage.local.get(['idRegistry']);
+    // Get the registry for this platform
+    const idRegistry = await idRegistryManager.getIdRegistry();
 
     if (!idRegistry) {
         console.error('ID registry not initialized');
@@ -69,7 +57,7 @@ export async function generateUniquePageId(urlPattern, title) {
 
     // Store in registry
     idRegistry.pages[pageFingerprint] = uniqueId;
-    await chrome.storage.local.set({ idRegistry });
+    await idRegistryManager.saveIdRegistry(idRegistry);
 
     return uniqueId;
 }
@@ -81,7 +69,8 @@ export async function generateUniquePageId(urlPattern, title) {
  * @returns {Promise<string>} Unique element ID
  */
 export async function generateUniqueElementId(element, pageId) {
-    const { idRegistry } = await chrome.storage.local.get(['idRegistry']);
+    // Get the registry for this platform
+    const idRegistry = await idRegistryManager.getIdRegistry();
 
     if (!idRegistry) {
         console.error('ID registry not initialized');
@@ -112,7 +101,7 @@ export async function generateUniqueElementId(element, pageId) {
 
     // Store in registry
     idRegistry.elements[elementFingerprint] = uniqueId;
-    await chrome.storage.local.set({ idRegistry });
+    await idRegistryManager.saveIdRegistry(idRegistry);
 
     return uniqueId;
 }
@@ -219,8 +208,7 @@ function getElementType(element) {
  * @returns {Promise<Object>} ID registry data
  */
 export async function exportIdRegistry() {
-    const { idRegistry } = await chrome.storage.local.get(['idRegistry']);
-    return idRegistry || { pages: {}, elements: {}, counters: { page: 1000, element: 1000 } };
+    return await idRegistryManager.exportAllIdRegistries();
 }
 
 /**
@@ -229,16 +217,5 @@ export async function exportIdRegistry() {
  * @returns {Promise<boolean>} Success status
  */
 export async function importIdRegistry(idRegistryData) {
-    if (!idRegistryData || !idRegistryData.pages || !idRegistryData.elements || !idRegistryData.counters) {
-        console.error('Invalid ID registry data');
-        return false;
-    }
-
-    try {
-        await chrome.storage.local.set({ idRegistry: idRegistryData });
-        return true;
-    } catch (error) {
-        console.error('Error importing ID registry:', error);
-        return false;
-    }
+    return await idRegistryManager.importIdRegistries(idRegistryData);
 }

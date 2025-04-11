@@ -7,7 +7,7 @@ let shouldResumeCapture = false;
 let lastElementIdBeforeNavigation = null;
 
 // Initialize default state when the extension is installed
-chrome.runtime.onInstalled.addListener(() => {
+chrome.runtime.onInstalled.addListener(async () => {
     chrome.storage.local.set({
         captureMode: false,
         elementData: [],
@@ -18,39 +18,23 @@ chrome.runtime.onInstalled.addListener(() => {
 
     console.log('DOM Capture Extension installed successfully');
 
-    // Try to find and import latest ID registry file
-    loadIdRegistryFromStorage();
-});
-
-// Load ID registry from previous exported file, if any
-async function loadIdRegistryFromStorage() {
-    try {
-        // Check if we already have an ID registry in storage
-        const { idRegistry } = await chrome.storage.local.get(['idRegistry']);
-
-        if (!idRegistry) {
-            console.log('No ID registry found in storage, checking for exported files');
-
-            // Initialize an empty registry as fallback
-            const emptyRegistry = {
-                pages: {},
-                elements: {},
-                counters: {
-                    page: 1000,
-                    element: 1000
+    // Use storage directly to initialize an empty registry if none exists
+    const { idRegistry } = await chrome.storage.local.get(['idRegistry']);
+    if (!idRegistry) {
+        await chrome.storage.local.set({
+            idRegistry: {
+                default: {
+                    pages: {},
+                    elements: {},
+                    counters: {
+                        page: 1000,
+                        element: 1000
+                    }
                 }
-            };
-
-            // Save the empty registry while we look for a previously exported one
-            await chrome.storage.local.set({ idRegistry: emptyRegistry });
-        } else {
-            console.log('ID registry found in storage:', Object.keys(idRegistry.pages).length, 'pages,',
-                Object.keys(idRegistry.elements).length, 'elements');
-        }
-    } catch (error) {
-        console.error('Error loading ID registry:', error);
+            }
+        });
     }
-}
+});
 
 // Listen for navigation events to track cross-page journeys
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
@@ -128,7 +112,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ success: true });
     } else if (message.action === 'importIdRegistry') {
         console.log('Importing ID registry:', message.data);
+        // Use storage directly to import registry
         chrome.storage.local.set({ idRegistry: message.data });
+        sendResponse({ success: true });
+    } else if (message.action === 'setPlatformKey') {
+        // Set the platform key in storage directly
+        console.log('Setting platform key:', message.platformKey);
+        chrome.storage.local.set({ platformKey: message.platformKey });
         sendResponse({ success: true });
     }
 
