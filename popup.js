@@ -59,9 +59,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Export captured data
     exportBtn.addEventListener('click', async () => {
-        const { elementData = [], pageData = [] } = await chrome.storage.local.get([
+        const { elementData = [], pageData = [], idRegistry = null } = await chrome.storage.local.get([
             'elementData',
-            'pageData'
+            'pageData',
+            'idRegistry'
         ]);
 
         if (elementData.length === 0 && pageData.length === 0) {
@@ -73,6 +74,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const exportData = {
             pages: pageData,
             elements: elementData,
+            idRegistry: idRegistry,
             exportedAt: new Date().toISOString()
         };
 

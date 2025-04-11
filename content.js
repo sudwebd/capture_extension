@@ -1,44 +1,64 @@
 // DOM Capture Module for DOM Capture Extension
 
+// Import ID manager 
+let idManager;
+let generateUniquePageId;
+let generateUniqueElementId;
+let generateRobustSelector;
+
 // State variables
 let captureMode = false;
 let lastCapturedElementId = null;
 let highlightedElement = null;
 let capturePopup = null;
 let pendingNavigation = null;
+let navigationOverlay = null;
 
 // Initialize content script
 init();
 
 // Main initialization function
 async function init() {
-    // Load state from storage
-    const { captureMode: storedCaptureMode, lastElementId } = await chrome.storage.local.get([
-        'captureMode',
-        'lastElementId'
-    ]);
+    try {
+        // Dynamically import ID manager module
+        idManager = await import(chrome.runtime.getURL("src/modules/id-manager.js"));
+        generateUniquePageId = idManager.generateUniquePageId;
+        generateUniqueElementId = idManager.generateUniqueElementId;
+        generateRobustSelector = idManager.generateRobustSelector;
 
-    captureMode = storedCaptureMode || false;
-    lastCapturedElementId = lastElementId || null;
+        // Initialize ID manager
+        await idManager.initializeIdManager();
 
-    // Initialize page data capture
-    capturePage();
+        // Load state from storage
+        const { captureMode: storedCaptureMode, lastElementId } = await chrome.storage.local.get([
+            'captureMode',
+            'lastElementId'
+        ]);
 
-    // Setup message listener for popup communication
-    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-        if (message.action === 'enableCapture') {
-            enableCaptureMode();
-        } else if (message.action === 'disableCapture') {
-            disableCaptureMode();
-        } else if (message.action === 'checkPendingNavigation') {
-            // This is called by background script after page load to check if we need to re-enable capture
-            if (message.resumeCapture) {
-                setTimeout(() => enableCaptureMode(), 500); // Short delay to ensure DOM is ready
+        captureMode = storedCaptureMode || false;
+        lastCapturedElementId = lastElementId || null;
+
+        // Initialize page data capture
+        capturePage();
+
+        // Setup message listener for popup communication
+        chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+            if (message.action === 'enableCapture') {
+                enableCaptureMode();
+            } else if (message.action === 'disableCapture') {
+                disableCaptureMode();
+            } else if (message.action === 'checkPendingNavigation') {
+                // This is called by background script after page load to check if we need to re-enable capture
+                if (message.resumeCapture) {
+                    setTimeout(() => enableCaptureMode(), 500); // Short delay to ensure DOM is ready
+                }
             }
-        }
-        sendResponse({ success: true });
-        return true;
-    });
+            sendResponse({ success: true });
+            return true;
+        });
+    } catch (error) {
+        console.error("Error initializing DOM Capture module:", error);
+    }
 }
 
 // Enable capture mode
@@ -87,7 +107,7 @@ function disableCaptureMode(temporary = false) {
 
     // Show notification
     showNotification(temporary ?
-        'DOM Capture Mode temporarily disabled for navigation. Will resume on next page.' :
+        'DOM Capture Mode temporarily disabled for navigation. Click on the element to navigate.' :
         'DOM Capture Mode Disabled.');
 
     // Only update storage if not temporarily disabled
@@ -156,12 +176,6 @@ function createCapturePopup(element) {
     // Remove any existing popup
     removePopup();
 
-    // Determine if element is likely a navigation element
-    const isLikelyNavigation = element.tagName === 'A' ||
-        (element.tagName === 'BUTTON' && element.type !== 'button') ||
-        element.onclick !== null ||
-        element.getAttribute('role') === 'link';
-
     // Create popup container
     capturePopup = document.createElement('div');
     capturePopup.className = 'dom-capture-popup';
@@ -202,11 +216,11 @@ function createCapturePopup(element) {
     
     <div style="margin-bottom: 15px;">
       <label style="display: flex; align-items: center; font-size: 14px; cursor: pointer;">
-        <input type="checkbox" id="navigation-trigger" style="margin-right: 8px;" ${isLikelyNavigation ? 'checked' : ''}>
-        Mark as navigation trigger (will navigate after capture)
+        <input type="checkbox" id="navigation-trigger" style="margin-right: 8px;">
+        Mark as navigation trigger (will allow navigation after capture)
       </label>
       <p style="font-size: 12px; color: #666; margin: 5px 0 0 24px;">
-        Temporarily disables capture mode to allow navigation to next page
+        Temporarily disables capture mode so you can click the element to navigate
       </p>
     </div>
     
@@ -250,7 +264,7 @@ function createCapturePopup(element) {
             .then(() => {
                 removePopup();
 
-                // If navigation trigger, temporarily disable capture mode and trigger the navigation
+                // If navigation trigger, temporarily disable capture mode and prepare for navigation
                 if (isNavigationTrigger && pendingNavigation) {
                     processNavigationTrigger(pendingNavigation.element);
                 }
@@ -263,35 +277,56 @@ function processNavigationTrigger(element) {
     // Temporarily disable capture mode
     disableCaptureMode(true);
 
-    // Allow a small delay to ensure the UI updates before navigation
-    setTimeout(() => {
-        // Simulate the natural click
-        if (element.tagName === 'A') {
-            // For anchor tags, we can navigate directly
-            if (element.href) {
-                window.location.href = element.href;
-            } else {
-                // Try to trigger the default click
-                const clickEvent = new MouseEvent('click', {
-                    bubbles: true,
-                    cancelable: true,
-                    view: window
-                });
-                element.dispatchEvent(clickEvent);
-            }
-        } else {
-            // For other elements, simulate a click
-            const clickEvent = new MouseEvent('click', {
-                bubbles: true,
-                cancelable: true,
-                view: window
-            });
-            element.dispatchEvent(clickEvent);
-        }
+    // Create a visual overlay to show the element is ready for navigation
+    createNavigationOverlay(element);
+}
 
-        // Clear pending navigation
-        pendingNavigation = null;
-    }, 300);
+// Create a visual overlay to indicate an element is ready for navigation
+function createNavigationOverlay(element) {
+    // Remove any existing overlay
+    removeNavigationOverlay();
+
+    // Highlight the element with a special style
+    element.style.outline = '3px dashed #ff9800';
+    element.style.outlineOffset = '2px';
+
+    // Create an overlay to indicate navigation readiness
+    navigationOverlay = document.createElement('div');
+    navigationOverlay.className = 'navigation-overlay';
+    navigationOverlay.style.position = 'fixed';
+    navigationOverlay.style.bottom = '20px';
+    navigationOverlay.style.left = '50%';
+    navigationOverlay.style.transform = 'translateX(-50%)';
+    navigationOverlay.style.backgroundColor = '#ff9800';
+    navigationOverlay.style.color = 'white';
+    navigationOverlay.style.padding = '10px 15px';
+    navigationOverlay.style.borderRadius = '5px';
+    navigationOverlay.style.zIndex = '10000';
+    navigationOverlay.style.boxShadow = '0 2px 10px rgba(0,0,0,0.2)';
+    navigationOverlay.style.textAlign = 'center';
+    navigationOverlay.innerHTML = `
+        <div style="font-weight: bold; margin-bottom: 5px;">Navigation Ready</div>
+        <div style="font-size: 12px;">Click the highlighted element to navigate</div>
+    `;
+
+    document.body.appendChild(navigationOverlay);
+}
+
+// Remove navigation overlay
+function removeNavigationOverlay() {
+    if (navigationOverlay && navigationOverlay.parentNode) {
+        navigationOverlay.parentNode.removeChild(navigationOverlay);
+        navigationOverlay = null;
+    }
+
+    // Reset any element highlighting
+    const elements = document.querySelectorAll('*');
+    for (const el of elements) {
+        if (el.style.outline.includes('dashed #ff9800')) {
+            el.style.outline = '';
+            el.style.outlineOffset = '';
+        }
+    }
 }
 
 // Remove the popup
@@ -305,9 +340,6 @@ function removePopup() {
 // Capture element data
 async function captureElement(element, description, kpi) {
     try {
-        // Generate a unique ID for this element
-        const elementId = generateElementId(element);
-
         // Get the current page data
         const { pageData = [] } = await chrome.storage.local.get(['pageData']);
         const currentPage = pageData.find(page => page.url_pattern === getUrlPattern(window.location.href));
@@ -317,12 +349,15 @@ async function captureElement(element, description, kpi) {
             return;
         }
 
+        // Generate a unique ID for this element using the ID manager
+        const elementId = await generateUniqueElementId(element, currentPage.page_id);
+
         // Create element data structure
         const elementData = {
             element_id: elementId,
             page_id: currentPage.page_id,
             type: getElementType(element),
-            dom_selector: generateSelector(element),
+            dom_selector: generateRobustSelector(element),
             description: description,
             version: "1.0",
             KPI: kpi,
@@ -368,11 +403,11 @@ async function capturePage() {
             return; // Already captured this page
         }
 
-        // Generate page ID
-        const pageId = generatePageId(urlPattern);
-
         // Detect framework (simple detection)
         const framework = detectFramework();
+
+        // Generate page ID using ID manager
+        const pageId = await generateUniquePageId(urlPattern, document.title);
 
         // Create page data structure
         const pageInfo = {
@@ -383,6 +418,7 @@ async function capturePage() {
             description: document.title || "Untitled Page",
             KPI: null,
             updated_at: new Date().toISOString(),
+            from: null
         };
 
         // Update storage
@@ -410,23 +446,6 @@ function detectFramework() {
     }
 }
 
-// Helper function to generate page ID
-function generatePageId(urlPattern) {
-    const urlSegments = urlPattern.split('/').filter(Boolean);
-    const lastSegment = urlSegments[urlSegments.length - 1] || 'home';
-    return `${lastSegment}_page_v1`;
-}
-
-// Helper function to generate element ID
-function generateElementId(element) {
-    const type = getElementType(element);
-    const id = element.id || '';
-    const className = Array.from(element.classList).join('_') || '';
-    const text = element.textContent?.trim().substring(0, 20).replace(/\s+/g, '_') || '';
-
-    return `${type}_${id || className || text || 'unknown'}_${Date.now().toString(36)}`.toLowerCase();
-}
-
 // Helper function to get element type
 function getElementType(element) {
     if (element.tagName === 'BUTTON' ||
@@ -442,37 +461,6 @@ function getElementType(element) {
     } else {
         return element.tagName.toLowerCase();
     }
-}
-
-// Helper function to generate CSS selector
-function generateSelector(element) {
-    if (element.id) {
-        return `#${element.id}`;
-    }
-
-    if (element.className) {
-        const classes = Array.from(element.classList).join('.');
-        return `.${classes}`;
-    }
-
-    // Generate a selector based on tag and position
-    let selector = element.tagName.toLowerCase();
-    let parent = element.parentElement;
-    let nthChild = 1;
-
-    if (parent) {
-        for (let sibling = element.previousElementSibling; sibling; sibling = sibling.previousElementSibling) {
-            if (sibling.tagName === element.tagName) {
-                nthChild++;
-            }
-        }
-
-        if (nthChild > 1 || element.nextElementSibling && element.nextElementSibling.tagName === element.tagName) {
-            selector += `:nth-child(${nthChild})`;
-        }
-    }
-
-    return selector;
 }
 
 // Helper function to get URL pattern for matching
@@ -501,6 +489,8 @@ function showNotification(message, type = 'info') {
 
     if (type === 'error') {
         notification.style.backgroundColor = '#f44336';
+    } else if (type === 'warning') {
+        notification.style.backgroundColor = '#ff9800';
     } else {
         notification.style.backgroundColor = '#2196F3';
     }

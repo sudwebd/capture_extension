@@ -17,7 +17,40 @@ chrome.runtime.onInstalled.addListener(() => {
     });
 
     console.log('DOM Capture Extension installed successfully');
+
+    // Try to find and import latest ID registry file
+    loadIdRegistryFromStorage();
 });
+
+// Load ID registry from previous exported file, if any
+async function loadIdRegistryFromStorage() {
+    try {
+        // Check if we already have an ID registry in storage
+        const { idRegistry } = await chrome.storage.local.get(['idRegistry']);
+
+        if (!idRegistry) {
+            console.log('No ID registry found in storage, checking for exported files');
+
+            // Initialize an empty registry as fallback
+            const emptyRegistry = {
+                pages: {},
+                elements: {},
+                counters: {
+                    page: 1000,
+                    element: 1000
+                }
+            };
+
+            // Save the empty registry while we look for a previously exported one
+            await chrome.storage.local.set({ idRegistry: emptyRegistry });
+        } else {
+            console.log('ID registry found in storage:', Object.keys(idRegistry.pages).length, 'pages,',
+                Object.keys(idRegistry.elements).length, 'elements');
+        }
+    } catch (error) {
+        console.error('Error loading ID registry:', error);
+    }
+}
 
 // Listen for navigation events to track cross-page journeys
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
@@ -92,6 +125,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ success: true });
     } else if (message.action === 'logCapturedPage') {
         console.log('Page captured:', message.data);
+        sendResponse({ success: true });
+    } else if (message.action === 'importIdRegistry') {
+        console.log('Importing ID registry:', message.data);
+        chrome.storage.local.set({ idRegistry: message.data });
         sendResponse({ success: true });
     }
 
